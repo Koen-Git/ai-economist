@@ -11,12 +11,15 @@ import sys
 import time
 
 import ray
-from utils import remote, saving
+from utils import remote, saving, plotting
 import tf_models
 import yaml
 from env_wrapper import RLlibEnvWrapper
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.tune.logger import NoopLogger, pretty_print
+import wandb
+import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 ray.init(log_to_driver=False)
 
@@ -237,6 +240,23 @@ def maybe_store_dense_log(
             saving.write_dense_logs(trainer_obj, log_dir)
             logger.info(">> Wrote dense logs to: %s", log_dir)
 
+            # write to wandb
+            if wandb.run is not None:
+                # get each lz4 file in log_dir
+                for i, f in enumerate(os.listdir(log_dir)):
+                    if f.endswith(".lz4"):
+                        log = saving.load_episode_log(f"{log_dir}/{f}")
+                        plots = plotting.breakdown(log)
+                        im_loc = log_dir + f[:-4] + "_plot.png"
+                        plots[0].savefig(im_loc)
+                        plt.close(plots[0])
+                        images = wandb.Image(im_loc)
+                        wandb.log({f[:-4]: images})
+                        # remove image from os
+                        os.remove(im_loc)
+                        if i > 0:
+                            break  # just save 2
+
 
 def maybe_save(trainer_obj, result_dict, ckpt_freq, ckpt_directory, trainer_step_last_ckpt):
     global_step = result_dict["timesteps_total"]
@@ -293,6 +313,9 @@ if __name__ == "__main__":
     ckpt_frequency = run_config["general"].get("ckpt_frequency_steps", 0)
     global_step = int(step_last_ckpt)
 
+    wandb.init(project="XAI-economist-ORIGINAL", resume=False)
+    wandb.config.update(run_config)
+
     while num_parallel_episodes_done < run_config["general"]["episodes"]:
 
         # Training
@@ -302,6 +325,42 @@ if __name__ == "__main__":
         num_parallel_episodes_done = result["episodes_total"]
         global_step = result["timesteps_total"]
         curr_iter = result["training_iteration"]
+
+        if result["episodes_this_iter"] > 0:
+            if wandb.run:
+                wandb_log = {
+                    "training_steps_completed": global_step,
+                    "episodes_total": num_parallel_episodes_done,
+                    "curr_iter": curr_iter,
+                    "episode_rewards": {
+                        "mean": result["episode_reward_mean"],
+                        "min": result["episode_reward_min"],
+                        "max": result["episode_reward_max"],
+                    },
+                    "policy_rewards": {
+                        "mean": result["policy_reward_mean"],
+                        "min": result["policy_reward_min"],
+                        "max": result["policy_reward_max"],
+                    },
+                    "learner_info_a": result["info"]["learner"]["a"]["learner_stats"],
+                    "learner_info_p": result["info"]["learner"]["p"]["learner_stats"] if "p" in result["info"]["learner"] else None,
+                }
+                if "evaluation" in result:
+                    _wandb_log = {
+                        "eval_episode_rewards": {
+                            "mean": result["evaluation"]["episode_reward_mean"],
+                            "min": result["evaluation"]["episode_reward_min"],
+                            "max": result["evaluation"]["episode_reward_max"],
+                        },
+                        "eval_policy_rewards": {
+                            "mean": result["evaluation"]["policy_reward_mean"],
+                            "min": result["evaluation"]["policy_reward_min"],
+                            "max": result["evaluation"]["policy_reward_max"],
+                        }
+                    }
+                    wandb_log.update(_wandb_log)
+
+                wandb.log(wandb_log)
 
         logger.info(
             "Iter %d: steps this-iter %d total %d -> %d/%d episodes done",

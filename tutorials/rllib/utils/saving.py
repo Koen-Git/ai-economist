@@ -10,6 +10,9 @@ import pickle
 import shutil
 import sys
 
+import json
+import lz4.frame
+
 import yaml
 from ai_economist import foundation
 from .remote import remote_env_fun
@@ -160,6 +163,11 @@ def save_snapshot(trainer, ckpt_dir, suffix=""):
 
     logger.info("Saved Trainer snapshot + Env object @ %s", latest_filepath)
 
+def load_episode_log(filepath):
+    """Load the dense log saved at provided filepath"""
+    with lz4.frame.open(filepath, mode="rb") as log_file:
+        log_bytes = log_file.read()
+    return json.loads(log_bytes)
 
 def load_snapshot(trainer, run_dir, ckpt=None, suffix="", load_latest=False):
 

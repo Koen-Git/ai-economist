@@ -18,6 +18,7 @@ from env_wrapper import RLlibEnvWrapper
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.tune.logger import NoopLogger, pretty_print
 import wandb
+import numpy as np
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 
@@ -247,28 +248,14 @@ def maybe_store_dense_log(
                     if f.endswith(".lz4"):
                         log = saving.load_episode_log(f"{log_dir}/{f}")
                         plots = plotting.breakdown(log)
-                        im_loc = log_dir + f[:-4] + "_plot.png"
-                        
-                        plots[0][0].savefig(im_loc)
-                        plt.close(plots[0][0])
-                        images = wandb.Image(im_loc)
-                        wandb.log({f[:-4]: images})
-                        # remove image from os
-                        os.remove(im_loc)
-                        
-                        plots[0][1].savefig(im_loc)
-                        plt.close(plots[0][1])
-                        images = wandb.Image(im_loc)
-                        wandb.log({f[:-4] + '1': images})
-                        os.remove(im_loc)
-                        
-                        plots[0][2].savefig(im_loc)
-                        plt.close(plots[0][2])
-                        images = wandb.Image(im_loc)
-                        wandb.log({f[:-4] + '2': images})
-                        os.remove(im_loc)
-                        if i > 0:
-                            break  # just save 2
+                        wandb.log({f[:-4]: plots[0][0]})
+                        plt.close(plots[0])
+                        wandb.log({f[:-4]: plots[0][1]})
+                        plt.close(plots[0])
+                        wandb.log({f[:-4]: plots[0][2]})
+                        plt.close(plots[0])
+                        if i > 1:
+                            break  # just save 2 
 
 
 def maybe_save(trainer_obj, result_dict, ckpt_freq, ckpt_directory, trainer_step_last_ckpt):
@@ -372,6 +359,27 @@ if __name__ == "__main__":
                         }
                     }
                     wandb_log.update(_wandb_log)
+
+                # loop over each worker and each env obtain their metrics
+                env_metric_summaries = trainer.workers.foreach_worker(
+                    lambda w: w.foreach_env(
+                        lambda env: env.summary
+                    )
+                )
+
+                # x is a list of lists of dicts (one dict per env per worker)
+                # convert it to a single dict with averages over each metric
+                env_metric_summaries = np.array(env_metric_summaries, dtype=object)
+                env_metric_means = {}
+                for w in env_metric_summaries:
+                    for env in w:
+                        for k, v in env.items():
+                            if k not in env_metric_means:
+                                env_metric_means[k] = []
+                            env_metric_means[k].append(v)
+                env_metric_means = {k: np.mean(v) for k, v in env_metric_means.items()}
+
+                wandb_log.update(env_metric_means)
 
                 wandb.log(wandb_log)
 

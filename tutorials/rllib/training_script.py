@@ -248,11 +248,24 @@ def maybe_store_dense_log(
                         log = saving.load_episode_log(f"{log_dir}/{f}")
                         plots = plotting.breakdown(log)
                         im_loc = log_dir + f[:-4] + "_plot.png"
-                        plots[0].savefig(im_loc)
-                        plt.close(plots[0])
+                        
+                        plots[0][0].savefig(im_loc)
+                        plt.close(plots[0][0])
                         images = wandb.Image(im_loc)
                         wandb.log({f[:-4]: images})
                         # remove image from os
+                        os.remove(im_loc)
+                        
+                        plots[0][1].savefig(im_loc)
+                        plt.close(plots[0][1])
+                        images = wandb.Image(im_loc)
+                        wandb.log({f[:-4] + '1': images})
+                        os.remove(im_loc)
+                        
+                        plots[0][2].savefig(im_loc)
+                        plt.close(plots[0][2])
+                        images = wandb.Image(im_loc)
+                        wandb.log({f[:-4] + '2': images})
                         os.remove(im_loc)
                         if i > 0:
                             break  # just save 2
@@ -325,7 +338,7 @@ if __name__ == "__main__":
         num_parallel_episodes_done = result["episodes_total"]
         global_step = result["timesteps_total"]
         curr_iter = result["training_iteration"]
-
+        
         if result["episodes_this_iter"] > 0:
             if wandb.run:
                 wandb_log = {
@@ -342,8 +355,8 @@ if __name__ == "__main__":
                         "min": result["policy_reward_min"],
                         "max": result["policy_reward_max"],
                     },
-                    "learner_info_a": result["info"]["learner"]["a"]["learner_stats"],
-                    "learner_info_p": result["info"]["learner"]["p"]["learner_stats"] if "p" in result["info"]["learner"] else None,
+                    "learner_info_a": result["info"]["learner"]["a"],
+                    "learner_info_p": result["info"]["learner"]["p"] if "p" in result["info"]["learner"] else None,
                 }
                 if "evaluation" in result:
                     _wandb_log = {

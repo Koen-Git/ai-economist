@@ -249,11 +249,11 @@ def maybe_store_dense_log(
                         log = saving.load_episode_log(f"{log_dir}/{f}")
                         plots = plotting.breakdown(log)
                         wandb.log({f[:-4]: plots[0][0]})
-                        plt.close(plots[0])
+                        plt.close(plots[0][0])
                         wandb.log({f[:-4]: plots[0][1]})
-                        plt.close(plots[0])
+                        plt.close(plots[0][1])
                         wandb.log({f[:-4]: plots[0][2]})
-                        plt.close(plots[0])
+                        plt.close(plots[0][2])
                         if i > 1:
                             break  # just save 2 
 
